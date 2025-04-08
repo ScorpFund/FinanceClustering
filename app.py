@@ -1,11 +1,10 @@
-# app.py
-
 import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from umap import UMAP
+from sklearn.cluster import KMeans
 import plotly.graph_objs as go
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
@@ -13,7 +12,7 @@ from qdrant_client.http.models import Distance, VectorParams
 st.set_page_config(layout="wide")
 st.title("📈 Qdrant UMAP Stock Pattern Explorer")
 
-# Load data
+# Sidebar inputs
 ticker = st.sidebar.text_input("Enter Ticker Symbol", value="AAPL")
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2015-01-01"))
 end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2024-12-31"))
@@ -59,12 +58,18 @@ client.upload_collection(
 umap_model = UMAP(n_neighbors=15, min_dist=0.1, metric="cosine", random_state=42)
 vectors_2d = umap_model.fit_transform(price_vectors)
 
+# KMeans clustering
+n_clusters = 30
+kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+cluster_labels = kmeans.fit_predict(price_vectors)
+
 # Visualization DataFrame
 viz_df = pd.DataFrame(vectors_2d, columns=["x", "y"])
 viz_df["date"] = pd.to_datetime(start_dates)
 viz_df["vector"] = price_vectors
 viz_df["year"] = viz_df["date"].dt.year
 viz_df["qdrant_id"] = list(range(len(viz_df)))
+viz_df["cluster"] = cluster_labels
 
 # Filter by year
 selected_year = st.sidebar.selectbox("Filter by Year", ["All"] + sorted(viz_df["year"].unique().astype(str).tolist()))
@@ -78,13 +83,29 @@ fig.add_trace(go.Scatter(
     x=filtered_df["x"],
     y=filtered_df["y"],
     mode="markers",
-    marker=dict(size=6, color="blue"),
+    marker=dict(
+        size=6,
+        color=filtered_df["cluster"],
+        colorscale="Turbo",
+        colorbar=dict(title="Cluster"),
+    ),
     text=filtered_df["date"].astype(str),
     name="All Patterns",
-    hovertemplate="Date: %{text}<br>X: %{x}<br>Y: %{y}<extra></extra>"
+    hovertemplate="Date: %{text}<br>Cluster: %{marker.color}<br>X: %{x}<br>Y: %{y}<extra></extra>"
 ))
 
-selected_idx = st.number_input("Click a pattern index to search similar (0 to {})".format(len(filtered_df)-1), min_value=0, max_value=len(filtered_df)-1, step=1)
+fig.update_layout(
+    xaxis_title="UMAP Dimension 1",
+    yaxis_title="UMAP Dimension 2"
+)
+
+# Pattern selection
+selected_idx = st.number_input(
+    "Click a pattern index to search similar (0 to {})".format(len(filtered_df)-1),
+    min_value=0,
+    max_value=len(filtered_df)-1,
+    step=1
+)
 
 # Run similarity search on user input
 if st.button("🔍 Search Similar Patterns"):
