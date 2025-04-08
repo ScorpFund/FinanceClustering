@@ -128,7 +128,7 @@ if highlight_cluster != "None":
         y=highlight_df["y"],
         z=highlight_df["z"],
         mode="markers",
-        marker=dict(symbol="diamond", size=6, color="red"),
+        marker=dict(symbol='circle', size=6, color="red"),
         name=f"Highlighted Cluster {cluster_idx}"
     ))
 
@@ -169,7 +169,7 @@ if st.button("🔍 Search Similar Patterns"):
         y=[filtered_df.iloc[selected_idx]["y"]],
         z=[filtered_df.iloc[selected_idx]["z"]],
         mode="markers",
-        marker=dict(symbol="star", size=10, color="black"),
+        marker=dict(symbol='circle', size=10, color="black"),
         name="Query"
     ))
 
@@ -178,7 +178,7 @@ if st.button("🔍 Search Similar Patterns"):
         y=matches["y"],
         z=matches["z"],
         mode="markers",
-        marker=dict(symbol="diamond", size=8, color="lime"),
+        marker=dict(symbol='circle', size=8, color="lime"),
         name="Top Matches"
     ))
 
