@@ -1,0 +1,8 @@
+streamlit
+yfinance
+numpy
+pandas
+matplotlib
+umap-learn
+plotly
+qdrant-client
