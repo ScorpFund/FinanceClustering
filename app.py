@@ -29,13 +29,15 @@ st.write(f"Loaded {len(df)} rows of data for **{ticker}**")
 
 # Vectorize price data
 window_size = 30
-price_vectors, start_dates = [], []
+price_vectors, start_dates, cum_returns, volatilities = [], [], [], []
 
 for i in range(len(df) - window_size):
     window = df["Return"].iloc[i:i + window_size].values
     normed = (window - window.mean()) / (window.std() + 1e-6)
     price_vectors.append(normed.tolist())
     start_dates.append(str(df.index[i].date()))
+    cum_returns.append(np.sum(window))
+    volatilities.append(np.std(window))
 
 # Qdrant in-memory
 client = QdrantClient(":memory:")
@@ -46,7 +48,7 @@ client.recreate_collection(
     vectors_config=VectorParams(size=window_size, distance=Distance.COSINE)
 )
 
-payload = [{"start_date": date} for date in start_dates]
+payload = [{"start_date": d, "cum_return": r, "volatility": v} for d, r, v in zip(start_dates, cum_returns, volatilities)]
 client.upload_collection(
     collection_name=collection_name,
     vectors=price_vectors,
@@ -70,10 +72,31 @@ viz_df["vector"] = price_vectors
 viz_df["year"] = viz_df["date"].dt.year
 viz_df["qdrant_id"] = list(range(len(viz_df)))
 viz_df["cluster"] = cluster_labels
+viz_df["cumulative_return"] = cum_returns
+viz_df["volatility"] = volatilities
 
 # Filter by year
 selected_year = st.sidebar.selectbox("Filter by Year", ["All"] + sorted(viz_df["year"].unique().astype(str).tolist()))
 filtered_df = viz_df if selected_year == "All" else viz_df[viz_df["year"] == int(selected_year)]
+
+# Cluster selection
+highlight_cluster = st.sidebar.selectbox("Highlight Cluster (optional)", ["None"] + list(range(n_clusters)))
+
+# Color mode selection
+color_mode = st.sidebar.radio("Color By", ["Cluster", "Cumulative Return", "Volatility"])
+
+if color_mode == "Cluster":
+    marker_color = filtered_df["cluster"]
+    colorbar_title = "Cluster"
+    colorscale = "Turbo"
+elif color_mode == "Cumulative Return":
+    marker_color = filtered_df["cumulative_return"]
+    colorbar_title = "Cumulative Return"
+    colorscale = "Viridis"
+else:
+    marker_color = filtered_df["volatility"]
+    colorbar_title = "Volatility"
+    colorscale = "Plasma"
 
 # Plot
 st.subheader("📊 UMAP Projection")
@@ -85,14 +108,25 @@ fig.add_trace(go.Scatter(
     mode="markers",
     marker=dict(
         size=6,
-        color=filtered_df["cluster"],
-        colorscale="Turbo",
-        colorbar=dict(title="Cluster"),
+        color=marker_color,
+        colorscale=colorscale,
+        colorbar=dict(title=colorbar_title),
     ),
-    text=filtered_df["date"].astype(str),
-    name="All Patterns",
-    hovertemplate="Date: %{text}<br>Cluster: %{marker.color}<br>X: %{x}<br>Y: %{y}<extra></extra>"
+    text=filtered_df.apply(lambda row: f"Date: {row['date'].date()}<br>Cluster: {row['cluster']}<br>CumReturn: {row['cumulative_return']:.2f}<br>Volatility: {row['volatility']:.4f}", axis=1),
+    hoverinfo="text",
+    name="All Patterns"
 ))
+
+# Highlight cluster if selected
+if highlight_cluster != "None":
+    cluster_points = filtered_df[filtered_df["cluster"] == int(highlight_cluster)]
+    fig.add_trace(go.Scatter(
+        x=cluster_points["x"],
+        y=cluster_points["y"],
+        mode="markers",
+        marker=dict(symbol="circle", size=10, color="black", opacity=0.5),
+        name=f"Cluster {highlight_cluster}"
+    ))
 
 fig.update_layout(
     xaxis_title="UMAP Dimension 1",
